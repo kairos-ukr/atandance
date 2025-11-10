@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управління Вихідними</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        :root { --bg: #f3f4f6; --card: #fff; --primary: #2563eb; --text: #1f2937; --border: #e5e7eb; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); padding: 20px; margin: 0; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .card { background: var(--card); padding: 24px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); margin-bottom: 24px; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+        .stat-card { background: var(--primary); color: white; padding: 20px; border-radius: 12px; text-align: center; }
+        .stat-number { font-size: 2.5rem; font-weight: bold; line-height: 1; }
+        .stat-label { font-size: 1.1rem; opacity: 0.9; margin-top: 8px; }
+        .form-grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+        .form-group { margin-bottom: 16px; position: relative; }
+        label { display: block; font-weight: 500; margin-bottom: 8px; color: #4b5563; }
+        input, button { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+        button { background: var(--primary); color: white; border: none; font-weight: 600; cursor: pointer; }
+        button:hover:not(:disabled) { opacity: 0.9; }
+        button:disabled { background-color: #9ca3af; cursor: not-allowed; }
+        .dropdown { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid var(--border); border-radius: 8px; margin-top: 4px; max-height: 200px; overflow-y: auto; z-index: 10; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); }
+        .dropdown-item { padding: 12px; cursor: pointer; border-bottom: 1px solid var(--bg); }
+        .dropdown-item:hover { background-color: #f9fafb; }
+        .selected-pill { display: flex; justify-content: space-between; align-items: center; background: #dbeafe; color: #1e40af; padding: 10px 14px; border-radius: 8px; font-weight: 500; }
+        .remove-x { cursor: pointer; padding: 4px 8px; font-weight: bold; }
+        .alert { padding: 12px; border-radius: 8px; margin-bottom: 16px; }
+        .alert-success { background: #d1fae5; color: #065f46; }
+        .alert-error { background: #fee2e2; color: #991b1b; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const SUPABASE_URL = "https://logxutaepqzmvgsvscle.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxvZ3h1dGFlcHF6bXZnc3ZzY2xlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM5ODU4MDEsImV4cCI6MjA2OTU2MTgwMX0.NhbaKL5X48jHyPPxZ-6EadLcBfM-NMxMA8qbksT9VhE";
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        function App() {
+            const [message, setMessage] = React.useState(null);
+            const [refreshStats, setRefreshStats] = React.useState(0);
+
+            const showMsg = (text, type = 'success') => {
+                setMessage({ text, type });
+                setTimeout(() => setMessage(null), 5000);
+            };
+
+            return (
+                <div className="container">
+                    <h1 style={{marginBottom: '24px'}}>📅 Управління вихідними</h1>
+                    
+                    {message && <div className={`alert alert-${message.type}`}>{message.text}</div>}
+
+                    <StatsCards refreshTrigger={refreshStats} />
+
+                    <div className="card">
+                        <h2 style={{marginTop: 0}}>Додати вихідний</h2>
+                        <AttendanceForm showMsg={showMsg} onSuccess={() => setRefreshStats(p => p + 1)} />
+                    </div>
+                </div>
+            );
+        }
+
+        function StatsCards({ refreshTrigger }) {
+            const [stats, setStats] = React.useState({ today: 0, tomorrow: 0 });
+
+            React.useEffect(() => {
+                const fetchStats = async () => {
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+                    const { data, error } = await sb
+                        .from('attendance')
+                        .select('work_date')
+                        .in('work_date', [todayStr, tomorrowStr])
+                        .eq('status', 'OFF');
+
+                    if (!error && data) {
+                        setStats({
+                            today: data.filter(r => r.work_date === todayStr).length,
+                            tomorrow: data.filter(r => r.work_date === tomorrowStr).length
+                        });
+                    }
+                };
+                fetchStats();
+            }, [refreshTrigger]);
+
+            return (
+                <div className="stats-grid">
+                    <div className="stat-card">
+                        <div className="stat-number">{stats.today}</div>
+                        <div className="stat-label">Сьогодні вихідні</div>
+                    </div>
+                    <div className="stat-card" style={{background: '#4f46e5'}}>
+                        <div className="stat-number">{stats.tomorrow}</div>
+                        <div className="stat-label">Завтра вихідні</div>
+                    </div>
+                </div>
+            );
+        }
+
+        function AttendanceForm({ showMsg, onSuccess }) {
+            const [selectedEmp, setSelectedEmp] = React.useState(null);
+            const [dates, setDates] = React.useState({
+                start: new Date().toISOString().split('T')[0],
+                end: new Date().toISOString().split('T')[0]
+            });
+            const [notes, setNotes] = React.useState('');
+            const [loading, setLoading] = React.useState(false);
+
+            const handleSubmit = async () => {
+                if (!selectedEmp) return showMsg("❌ Виберіть працівника", "error");
+                if (!dates.start || !dates.end) return showMsg("❌ Вкажіть дати", "error");
+
+                setLoading(true);
+                try {
+                    const dateArray = [];
+                    let cur = new Date(dates.start);
+                    const stop = new Date(dates.end);
+                    while (cur <= stop) {
+                        dateArray.push(new Date(cur).toISOString().split('T')[0]);
+                        cur.setDate(cur.getDate() + 1);
+                    }
+
+                    // ФОРМУВАННЯ ЗАПИСІВ: поле 'source' прибрано, воно буде NULL в базі
+                    const records = dateArray.map(d => ({
+                        employee_custom_id: selectedEmp.custom_id,
+                        work_date: d,
+                        status: 'OFF',
+                        notes: notes || null
+                    }));
+
+                    const { error } = await sb.from('attendance').upsert(records, { onConflict: 'employee_custom_id, work_date' });
+                    if (error) throw error;
+
+                    showMsg(`✅ Додано вихідних: ${records.length} для ${selectedEmp.name}`);
+                    onSuccess();
+                    setNotes('');
+                } catch (err) {
+                    showMsg(`❌ Помилка: ${err.message}`, "error");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="form-grid">
+                    <div>
+                        <label>Працівник:</label>
+                        <EmployeeSearch onSelect={setSelectedEmp} selected={selectedEmp} />
+                    </div>
+                    <div>
+                        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px'}}>
+                            <div>
+                                <label>Дата з:</label>
+                                <input type="date" value={dates.start} onChange={e => setDates({...dates, start: e.target.value})} />
+                            </div>
+                            <div>
+                                <label>Дата по:</label>
+                                <input type="date" value={dates.end} min={dates.start} onChange={e => setDates({...dates, end: e.target.value})} />
+                            </div>
+                        </div>
+                        <div className="form-group">
+                            <label>Примітки (опціонально):</label>
+                            <input type="text" placeholder="Причина..." value={notes} onChange={e => setNotes(e.target.value)} />
+                        </div>
+                        <button onClick={handleSubmit} disabled={loading}>
+                            {loading ? 'Збереження...' : 'Додати вихідний'}
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        function EmployeeSearch({ onSelect, selected }) {
+            const [query, setQuery] = React.useState('');
+            const [results, setResults] = React.useState([]);
+
+            React.useEffect(() => {
+                const timer = setTimeout(async () => {
+                    if (query.length < 1) { setResults([]); return; }
+                    
+                    let dbQuery = sb.from('employees').select('custom_id, name').limit(10);
+                    if (!isNaN(query) && query.trim() !== '') {
+                         dbQuery = dbQuery.or(`custom_id.eq.${query},name.ilike.%${query}%`);
+                    } else {
+                         dbQuery = dbQuery.ilike('name', `%${query}%`);
+                    }
+                    const { data } = await dbQuery;
+                    if (data) setResults(data);
+                }, 300);
+                return () => clearTimeout(timer);
+            }, [query]);
+
+            if (selected) {
+                return (
+                    <div className="selected-pill">
+                        <span>👤 {selected.name} (ID: {selected.custom_id})</span>
+                        <span className="remove-x" onClick={() => onSelect(null)}>✕</span>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="form-group">
+                    <input type="text" placeholder="Пошук за ім'ям або ID..." value={query} onChange={e => setQuery(e.target.value)} />
+                    {query && results.length > 0 && (
+                        <div className="dropdown">
+                            {results.map(emp => (
+                                <div key={emp.custom_id} className="dropdown-item" onClick={() => { onSelect(emp); setQuery(''); setResults([]); }}>
+                                    {emp.name} <small style={{color: '#666'}}>(ID: {emp.custom_id})</small>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
